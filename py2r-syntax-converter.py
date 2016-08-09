@@ -5,12 +5,6 @@ mattheworion.cook@gmail.com
 
 Script to do basic sytax conversion between Python 3 and R syntax.
 
-NOTE: This only converts simple syntax.  It does not convert functionality
-      past simple arithmetic.
-Warning:
-    If you use dicitionaries in your script, comment them out beforehand.
-    There is a bug in the script currently which cannot deal with ':'
-
 What it does convert:
     -assignment operator
     -function definitions
@@ -19,12 +13,13 @@ What it does convert:
     -':' to '{'
     -'not' to '!'
     -if statments
+    -line endings to ';'
 
 What it doesn't do:
     -Python specific functions to R specific functions
-    -Add closing brackets perfectly
+    -Add closing brackets with perfect indentation
 
-TODO: Closing brackets issue
+TODO: Closing brackets indentation issue
 """
 
 from os import path
@@ -50,7 +45,10 @@ flags['b_start'] = []  # Indentation at code block start
 # Create indent dictionary
 indents = {}
 
-# Tested-Works
+# Define special characters to prevent ';' addition to line
+s_char = ('}\n', '{\n', ':\n', '"""\n')
+
+
 def createRfile():
     """Creates a new file named "filename.R" by removing .py extension"""
     # Provide path to file
@@ -197,9 +195,18 @@ def standind(line, cur_ind):
 #TESTED-WORKS
 def statement(line):
     """Converts if statements"""
-    if "if " in line or 'elif ' in line:
+    if "if " in line and not 'elif' in line:
         lsplit = line.split('if ', maxsplit=1)
         ls = lsplit[0] + 'if '
+        rs = lsplit[1]
+        # Replace the ':' at the end of the statement
+        rs = lsplit[1].replace(':','{')
+        rs = '(' + rs
+        rs = rs.replace('{', '){')
+        line = ls + rs
+    if 'elif ' in line:
+        lsplit = line.split('if ', maxsplit=1)
+        ls = lsplit[0] + 'else if '
         rs = lsplit[1]
         # Replace the ':' at the end of the statement
         rs = lsplit[1].replace(':','{')
@@ -214,6 +221,13 @@ def ignoreStrReplace(line, cur, rep):
     if '"' in line:
         #Split string at quotation marks
         lsplit = line.split('"')
+        #Replace items contained within even partitions
+        lsplit[::2] = [spl.replace(cur, rep) for spl in lsplit[::2]]
+        #Rejoin the partitions
+        line = '"'.join(lsplit)
+    elif "'" in line:
+        #Split string at quotation marks
+        lsplit = line.split("'")
         #Replace items contained within even partitions
         lsplit[::2] = [spl.replace(cur, rep) for spl in lsplit[::2]]
         #Rejoin the partitions
@@ -263,7 +277,7 @@ def main():
     pyfile, rfile = createRfile()
 
     with open(pyfile, "r") as infile, open(rfile, "w") as outfile:
-        # Read each line into lines[] iterator
+        # Read each line into lines[]
         lines = infile.readlines()
         # Close Python file
         infile.close()
@@ -285,6 +299,10 @@ def main():
             line = statement(line)
             # If the line isn't whitespace, write it to the file
             if not line.isspace():
+                # If line ends w/o special characters, append ';'
+                if (not line.endswith(s_char) and
+                        not line.lstrip().startswith('#')):    
+                    line = line.replace('\n', ';\n')
                 # Write modified line to file!
                 outfile.write(line)
         # Close R file
@@ -310,4 +328,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
