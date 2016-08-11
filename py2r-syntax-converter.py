@@ -13,7 +13,7 @@ What it does convert:
     -':' to '{'
     -'not' to '!'
     -if statments
-    -line endings to ';'
+    -add closing brackets on a newline
 
 What it doesn't do:
     -Python specific functions to R specific functions
@@ -299,10 +299,6 @@ def main():
             line = statement(line)
             # If the line isn't whitespace, write it to the file
             if not line.isspace():
-                # If line ends w/o special characters, append ';'
-                if (not line.endswith(s_char) and
-                        not line.lstrip().startswith('#')):    
-                    line = line.replace('\n', ';\n')
                 # Write modified line to file!
                 outfile.write(line)
         # Close R file

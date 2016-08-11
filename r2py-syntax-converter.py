@@ -20,25 +20,21 @@ What it doesn't do:
 
 """
 
-from os import path
+from os import path, scandir
 from shutil import copyfile
 
-# Define changes to make
+# Define simple changes to make
 simple_change = {"^" : "**",
                  "<-" : " = ",
                  "{\n" : ":\n",
                  "!" : "not",
-                 ";" : ""}                 
+                 ";" : "",
+                 "length" : "len",
+                 "rm(" : "del("}                 
 
 
-def createPyfile():
+def createPyfile(filename):
     """Creates a new file named "filename.py" by removing .R extension"""
-    # Provide path to file
-    # Note: The new python file will be placed in the same directory
-    filename = input("Please copy and paste the path to your file here: ")
-    if not path.isfile(filename):
-        print("Filename was invalid")
-        filename = input("Please copy and paste the path to your file here: ")
 
     # Test for valid file path
     if path.exists(filename) :
@@ -158,25 +154,57 @@ def dollarsign(line):
         line = line.replace('\n', ']\n')
     return line
 
+def editfiles(rfile, pyfile):
+    """Does single file editing"""
+    with open(rfile, "r") as infile, open(pyfile, "w") as outfile:
+            # Read each line into lines[]
+            lines = infile.readlines()
+            # Close R file
+            infile.close()
+            for line in lines:
+                if line.lstrip().startswith('#'):
+                    #Skip commented lines
+                    pass
+                else:
+                    # Perform changes
+                    line = chglinecontent(line)
+                outfile.write(line)
+            #Close python file
+            outfile.close()
+
 
 def main():
-    #Create python file
-    rfile, pyfile = createPyfile()
-    with open(rfile, "r") as infile, open(pyfile, "w") as outfile:
-        # Read each line into lines[]
-        lines = infile.readlines()
-        # Close R file
-        infile.close()
-        for line in lines:
-            if line.lstrip().startswith('#'):
-                #Skip commented lines
-                pass
-            else:                                                                                                                                                                               
-                # Perform changes
-                line = chglinecontent(line)
-            outfile.write(line)
-        #Close python file
-        outfile.close()
+    #Ask user if converting file or folder of files
+    choice = input("""Do you want to convert a single file or a folder full?
+    Enter 'single' for single file or 'folder' for folder of files:""")
+    #For single file
+    if choice.lower() == 'single':
+        # Provide path to file
+        # Note: The new python file will be placed in the same directory
+        filename = input("Please copy and paste the path to your file here: ")  
+        if not path.isfile(filename):
+            print("Filename was invalid")
+            filename = input("Please copy and paste the path to your file here: ")
+            #Create python file
+            rfile, pyfile = createPyfile(filename)
+            editfiles(rfile, pyfile)        
+        
+    #For mutiple files in a folder
+    elif choice.lower() == 'folder':
+        folder = input("Please enter the path to your folder: ")
+        if path.isdir(folder):
+            message = "Are you sure you want to convert all of " 
+            message += folder
+            message += " ? (yes/no)"
+            dblcheck = input(message)
+            if dblcheck.lower().startswith('n'):
+                print("Ok... Exiting program now.")
+                exit(0)
+            for file in scandir(folder):
+                filepath = file.path
+                if path.isfile(filepath) and filepath.endswith('.R'):
+                    rfile, pyfile = createPyfile(filepath)
+                    editfiles(rfile, pyfile)
 
 
 if __name__ == '__main__':
