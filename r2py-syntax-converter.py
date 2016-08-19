@@ -1,65 +1,43 @@
 """
 Written by Matthew Cook
-Created August 4, 2016
+Created August 9, 2016
 mattheworion.cook@gmail.com
-Script to do basic sytax conversion between Python 3 and R syntax.
+Script to do basic sytax conversion between R and Python 3 syntax.
 What it does convert:
     -assignment operator
     -function definitions
     -filename
-    -inline arithmetic (*=, +=, -=, **)
-    -':' to '{'
-    -'not' to '!'
+    -'{' to ':'
+    -'!' to 'not'
     -if statments
-    -add closing brackets on a newline
+    -remove ';' line endings
 What it doesn't do:
     -Python specific functions to R specific functions
     -Add closing brackets with perfect indentation
-TODO: Closing brackets indentation issue
 """
 
-from os import path
+from os import path, scandir
 from shutil import copyfile
 
-# Define changes to make
-simple_change = {"**" : "^",
-                 " = " : " <- ",
-                 ":\n" : "{\n",
-                 "not" : "!"}
-
-complex_change = {"def " : "",
-                  "+=" : '+',
-                  "-=" : '-',
-                  "*=" : '*'}
-
-# Create flag stacks
-flags = {}
-flags['comment'] = []  # Multi-line Comment flag
-flags['bracket'] = []  # Code block start flag
-flags['b_start'] = []  # Indentation at code block start
-
-# Create indent dictionary
-indents = {}
-
-# Define special characters to prevent ';' addition to line
-s_char = ('}\n', '{\n', ':\n', '"""\n')
+# Define simple changes to make
+simple_change = {"^" : "**",
+                 "<-" : " = ",
+                 "{\n" : ":\n",
+                 "!" : "not",
+                 ";" : "",
+                 "length" : "len",
+                 "rm(" : "del("}                 
 
 
-def createRfile():
-    """Creates a new file named "filename.R" by removing .py extension"""
-    # Provide path to file
-    # Note: The new R file will be placed in the same directory
-    filename = input("Please copy and paste the path to your file here: ")
-    if not path.isfile(filename):
-        print("Filename was invalid")
-        filename = input("Please copy and paste the path to your file here: ")
+def createPyfile(filename):
+    """Creates a new file named "filename.py" by removing .R extension"""
 
     # Test for valid file path
     if path.exists(filename) :
         #  Strip the directory from the filename
         new_name = path.basename(filename)
         # Replace python extention with R extension
-        new_name = filename.replace(".py", ".R")
+        new_name = filename.replace(".R", ".py")
 
         doesexist = path.exists(new_name)
 
@@ -91,74 +69,57 @@ def createRfile():
         print("No valid file selected... Quitting script")
 
 
-def find_all(tofind, string):
-    """Returns number of times a certain substring is found"""
-    found = [i for i in range(len(string)) if string.startswith(tofind, i)]
-    num_found = len(found)
-    return num_found
-
-
-def complexchange(line):
-    """Completes multi-step line changes """
-    for key in complex_change:
-        if key in line:
-            if key == 'def ' and line.lstrip().startswith(key):
-                #remove 'def' keyword
-                change = complex_change[key]
-                line_r = ignoreStrReplace(line, key, change)
-                #split function definition at '('
-                lsplit = line_r.split('(', maxsplit=1)
-                fname = lsplit[0]
-                params = '(' + lsplit[1]
-                # create R style function def "fname <- function(params)"
-                line = fname + ' <- function' + params
-            else:
-                line = opfunc(line, key)
+def brackets(line):
+    """Replace '{' with ':' and remove '}'"""
+    line = ignoreStrReplace(line, '{', ':')
+    line = ignoreStrReplace(line, '}', '')
     return line
 
 
-# TESTED-Works
+def ignoreStrReplace(line, cur, rep, count=None):
+    """Wrapper for str.replace to ignore strings"""
+    # Lazy fix to count being None
+    if not count:
+        count = 50
+    if '"' in line:
+        #Split string at quotation marks
+        lsplit = line.split('"')
+        #Replace items contained within even partitions
+        lsplit[::2] = [spl.replace(cur, rep, count) for spl in lsplit[::2]]
+        #Rejoin the partitions
+        line = '"'.join(lsplit)
+    else:
+        line = line.replace(cur, rep, count)
+    return line
+
+
+def statement(line):
+    """Convert R if statements to Python if statements"""
+    if line.lstrip().startswith('if'):
+        line = ignoreStrReplace(line, '(', '', count=1)
+        line = ignoreStrReplace(line, ')', '', count=1)        
+    if 'else if' in line:
+        line = ignoreStrReplace(line, 'else if', 'elif')
+        
+    return line
+
+
 def chglinecontent(line):
-    """Changes content contained within a single line"""
+    """Returns changed line after modifications"""
+    line = function(line)
+    line = statement(line)
+    line = brackets(line)
+    line = dollarsign(line)
     # Perform simple changes
     for key in simple_change.keys():
         # Ignore if string version exists in line
         check_str_s, check_str_d = stringify(key)
         if not check_str_d in line or not check_str_s in line:
             line = ignoreStrReplace(line, key, simple_change[key])
-    line = complexchange(line)
-    line = statement(line)
-    return line
-
-
-def indentation(s, tabsize=4):
-    """Generator to return level of indentation"""
-    sx = s.expandtabs(tabsize)
-    # if line is empty yields 0
-    return 0 if sx.isspace() else len(sx) - len(sx.lstrip())
-
-
-def opfunc(line, op):
-    """
-    Replaces python operations ('*'=) in line(self) with R style operations.
-    """
-    #Check if the operation is contained in a string, don't modify if true.
-    check_str_s, check_str_d = stringify(op)
-    if not check_str_d in line and not check_str_s in line:
-        # Get R style operation
-        rop = complex_change[op]
-        # Split line once at python operand
-        linesplit = line.split(op)
-        # Store variable (left side) and right side of operand
-        ls = linesplit[0] + ' <- '
-        rs = rop + linesplit[1]
-        # Prepend variable(ls) to right side and convert assignment variable
-        rs = linesplit[0].lstrip() + rs
-        # Strip whitespace from right of ls and create R style equation
-        line = ls + rs
 
     return line
 
+  
 def stringify(sub):
     """Returns python string versions ('' and "") of original substring"""
     check_str_s = "'" + sub + "'"
@@ -166,156 +127,80 @@ def stringify(sub):
     return check_str_s, check_str_d
 
 
-def setflags(line, indents):
-    """Scans line to set/unset flags for further processing"""
-    # For multi-line comments
-    if 1 == (find_all('"""', line) % 2):
-        if not flags['comment']:
-            flags['comment'].append('"""')
-        else:
-            flags['comment'].pop()
-    # For code blocks
-    if line.rstrip().endswith(':'):
-        flags['bracket'].append("}")
-        flags['b_start'].append(indentation(line))
-
-
-def standind(line, cur_ind):
-    """Standardizes indentation"""
-    devfromstd = cur_ind % 4
-    if not devfromstd == 0:
-        line = (devfromstd * '') + line
-    return indentation(line), line
-
-
-#TESTED-WORKS
-def statement(line):
-    """Converts if statements"""
-    if "if " in line and not 'elif' in line:
-        lsplit = line.split('if ', maxsplit=1)
-        ls = lsplit[0] + 'if '
-        rs = lsplit[1]
-        # Replace the ':' at the end of the statement
-        rs = lsplit[1].replace(':','{')
-        rs = '(' + rs
-        rs = rs.replace('{', '){')
-        line = ls + rs
-    if 'elif ' in line:
-        lsplit = line.split('if ', maxsplit=1)
-        ls = lsplit[0] + 'else if '
-        rs = lsplit[1]
-        # Replace the ':' at the end of the statement
-        rs = lsplit[1].replace(':','{')
-        rs = '(' + rs
-        rs = rs.replace('{', '){')
-        line = ls + rs
+def function(line):
+    """Returns python-style function definition"""
+    if 'function' in line and '(' in line and ')' in line:
+        line = line.replace('function', '')
+        line = line.replace('<-', '')
+        lsplit = line.split('(', maxsplit=1)
+        # Get name and parameters. Strip whitespace
+        fname = lsplit[0].strip()
+        params = lsplit[1].strip()
+        # create python style function definition (def name(parameters))
+        params = '(' + params
+        line = 'def ' + fname + params
     return line
 
 
-def ignoreStrReplace(line, cur, rep):
-    """Wrapper for str.replace to ignore strings"""
-    if '"' in line:
-        #Split string at quotation marks
-        lsplit = line.split('"')
-        #Replace items contained within even partitions
-        lsplit[::2] = [spl.replace(cur, rep) for spl in lsplit[::2]]
-        #Rejoin the partitions
-        line = '"'.join(lsplit)
-    elif "'" in line:
-        #Split string at quotation marks
-        lsplit = line.split("'")
-        #Replace items contained within even partitions
-        lsplit[::2] = [spl.replace(cur, rep) for spl in lsplit[::2]]
-        #Rejoin the partitions
-        line = '"'.join(lsplit)
-    else:
-        line = line.replace(cur, rep)
+def dollarsign(line):
+    """Return line with $ notation replaced by dictionary reference"""
+    #Note: Works only if code is vectorized.  Possibly consider regex to fix.
+    if '$' in line:
+        line = line.replace('$', '[')
+        line = line.replace('\n', ']\n')
     return line
 
-
-def closeBrackets(file):
-    """Attempts to find and close the opened brackets"""
-    for i in range(len(file)):
-        # Doing this to be able to randomly access variables
-        line = file[i]
-        # Set boolean to check for change in block
-        sameBlock = True
-        # Ignore lines with only whitespace
-        if not line.isspace():
-            #Look for opening brackets if closing brackets remain
-            if '{\n' in line and flags['bracket']:
-                # Store current index for later
-                i_temp = i
-                # Get starting indentation
-                start_indent = indentation(line)
-
-                while i+1 < len(file) and sameBlock:
-                    #Get next line, and strip trailing whitespace
-                    nextline = file[i+1].rstrip()
-                    #Get its indentation
-                    next_ind = indentation(nextline)
-                    # Check for decreased indentation and comma continuation
-                    if start_indent >= next_ind and not line.endswith(','):
-                        sameBlock = False
-                    else:
-                        i += 1
-
-                # Append final line with bracket closure and new line
-                file[i] = file[i] + (start_indent * ' ')
-                file[i] = file[i] + flags['bracket'].pop()
-                file[i] = file[i] + '\n'
-                # Reset to previous index + 1
-                i = i_temp + 1
-    return file
+def editfiles(rfile, pyfile):
+    """Does single file editing"""
+    with open(rfile, "r") as infile, open(pyfile, "w") as outfile:
+            # Read each line into lines[]
+            lines = infile.readlines()
+            # Close R file
+            infile.close()
+            for line in lines:
+                if line.lstrip().startswith('#'):
+                    #Skip commented lines
+                    pass
+                else:
+                    # Perform changes
+                    line = chglinecontent(line)
+                outfile.write(line)
+            #Close python file
+            outfile.close()
 
 
 def main():
-    pyfile, rfile = createRfile()
-
-    with open(pyfile, "r") as infile, open(rfile, "w") as outfile:
-        # Read each line into lines[]
-        lines = infile.readlines()
-        # Close Python file
-        infile.close()
-
-        for line in lines:
-            # Get indentation current before adjustment
-            indents['cur'] = indentation(line)
-            #Adjust to standard indent
-            indents['cur'], line = standind(line, indents['cur'])
-
-            #Strip whitespace and check for python comment or import
-            if not line.lstrip().startswith(("#","import","from")):
-                # Set the flags for further changes
-                setflags(line, indents)
-                if not flags['comment']:
-                    # Perform line changes
-                    line = chglinecontent(line)
-            #statement() may need two passes to correctly modify the line
-            line = statement(line)
-            # If the line isn't whitespace, write it to the file
-            if not line.isspace():
-                # Write modified line to file!
-                outfile.write(line)
-        # Close R file
-        outfile.close()
-
-    if flags['bracket']:
-        print("This functionality may not work perfectly... ")
-        toClose = input("""
-        Do you want to try to close the still open brackets?
-        (yes/no)
-        """)
-        if 'yes' == toClose.lower():
-            # Look for possible ways to close opened brackets in outfile
-            with open(rfile, "r") as file:
-                lines = file.readlines()
-                lines = closeBrackets(lines)
-                file.close()
-            with open(rfile, "w") as file:
-                # Overwrite old files
-                for line in lines:
-                    file.write(line)
+    #Ask user if converting file or folder of files
+    choice = input("""Do you want to convert a single file or a folder full?
+    Enter 'single' for single file or 'folder' for folder of files:""")
+    #For single file
+    if choice.lower() == 'single':
+        # Provide path to file
+        # Note: The new python file will be placed in the same directory
+        filename = input("Please copy and paste the path to your file here: ")  
+        if not path.isfile(filename):
+            print("Filename was invalid")
+        else:
+            #Create python file
+            rfile, pyfile = createPyfile(filename)
+            editfiles(rfile, pyfile)        
+        
+    #For mutiple files in a folder
+    elif choice.lower() == 'folder':
+        folder = input("Please enter the path to your folder: ")
+        if path.isdir(folder):
+            message = "Are you sure you want to convert all of " 
+            message += folder
+            message += " ? (yes/no)"
+            dblcheck = input(message)
+            if dblcheck.lower().startswith('n'):
+                print("Ok... Exiting program now.")
+                exit(0)
+            for file in scandir(folder):
+                filepath = file.path
+                if path.isfile(filepath) and filepath.endswith('.R'):
+                    rfile, pyfile = createPyfile(filepath)
+                    editfiles(rfile, pyfile)
 
 
 if __name__ == '__main__':
