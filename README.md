@@ -1,6 +1,8 @@
 # Py_R_Converters
 Contains Python 3.5 scripts to convert basic syntax of Python 3.5 to R.
 
+# I have ended my work with this repo. It's too buggy and I don't have the time to improve it.
+
 ## The goals of this repository are:
 * Help R programmers learn Python
 * Help convert old cumbersome, but useful R scripts into Python
